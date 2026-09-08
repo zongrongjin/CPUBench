@@ -27,6 +27,20 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM=""
 
+      - name: Verify .app contents
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/CPUBench.app"
+          echo "=== .app contents ==="
+          ls -la "$APP_PATH/"
+          echo "=== Info.plist check ==="
+          if [ -f "$APP_PATH/Info.plist" ]; then
+            echo "Info.plist found"
+            plutil -p "$APP_PATH/Info.plist" | head -20
+          else
+            echo "ERROR: Info.plist missing!"
+            exit 1
+          fi
+
       - name: Package .ipa
         run: |
           mkdir -p Payload
@@ -39,12 +53,17 @@ jobs:
             -X POST "https://api-cloud.browserstack.com/app-automate/upload" \
             -F "file=@CPUBench.ipa")
           echo "$RESP"
-          echo "BS_APP_URL=$(echo $RESP | python3 -c 'import sys,json; print(json.load(sys.stdin)["app_url"])')" >> $GITHUB_ENV
+          APP_URL=$(echo "$RESP" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("app_url",""))')
+          if [ -z "$APP_URL" ]; then
+            echo "WARNING: BrowserStack upload failed or no app_url returned"
+          else
+            echo "BS_APP_URL=$APP_URL" >> $GITHUB_ENV
+          fi
 
       - name: Save app URL
         run: |
-          echo "BrowserStack App URL: $BS_APP_URL"
-          echo "$BS_APP_URL" > bs_app_url.txt
+          echo "BrowserStack App URL: ${BS_APP_URL:-N/A}"
+          echo "${BS_APP_URL:-}" > bs_app_url.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
