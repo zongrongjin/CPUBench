@@ -1,0 +1,55 @@
+name: Build & Upload to BrowserStack
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Build .app (no signing)
+        run: |
+          xcodebuild build \
+            -project CPUBench.xcodeproj \
+            -scheme CPUBench \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/CPUBench.app Payload/
+          zip -r CPUBench.ipa Payload
+
+      - name: Upload to BrowserStack
+        run: |
+          RESP=$(curl -s -u "${{ secrets.BS_USER }}:${{ secrets.BS_KEY }}" \
+            -X POST "https://api-cloud.browserstack.com/app-automate/upload" \
+            -F "file=@CPUBench.ipa")
+          echo "$RESP"
+          echo "BS_APP_URL=$(echo $RESP | python3 -c 'import sys,json; print(json.load(sys.stdin)["app_url"])')" >> $GITHUB_ENV
+
+      - name: Save app URL
+        run: |
+          echo "BrowserStack App URL: $BS_APP_URL"
+          echo "$BS_APP_URL" > bs_app_url.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPUBench
+          path: |
+            CPUBench.ipa
+            bs_app_url.txt
