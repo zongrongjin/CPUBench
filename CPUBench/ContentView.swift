@@ -3,7 +3,7 @@ import UIKit
 
 let STAGE1_K: UInt32 = 0x44CC29
 
-@inline(never)
+@_optimize(none)
 func stage1Count(_ iters: Int) -> Int {
     var c = 0
     for n in 1...iters {
@@ -14,7 +14,7 @@ func stage1Count(_ iters: Int) -> Int {
     return c
 }
 
-@inline(never)
+@_optimize(none)
 func stage2Run(_ iters: Int) -> Int {
     var acc = 0
     for i in 1...iters {
@@ -23,7 +23,7 @@ func stage2Run(_ iters: Int) -> Int {
     return acc
 }
 
-@inline(never)
+@_optimize(none)
 func stage3Run(_ iters: Int) -> UInt64 {
     var acc: UInt64 = 1
     for i in 1...iters {
@@ -32,7 +32,7 @@ func stage3Run(_ iters: Int) -> UInt64 {
     return acc
 }
 
-@inline(never)
+@_optimize(none)
 func stage4Run(_ iters: Int) -> Int {
     var acc = 0
     for i in 1...iters {
@@ -41,13 +41,9 @@ func stage4Run(_ iters: Int) -> Int {
     return acc
 }
 
-// Global sink - compiler can't eliminate writes to a public global
-var resultSink: UInt64 = 0
-
 @inline(never)
 func runBenchmark() -> String {
     var results: [[String: Any]] = []
-    var sink: UInt64 = 0
 
     for round in 1...4 {
         let t0 = CACurrentMediaTime()
@@ -55,22 +51,18 @@ func runBenchmark() -> String {
         let s1r = stage1Count(29000)
         let t1 = CACurrentMediaTime()
         let s1us = Int((t1 - t0) * 1_000_000)
-        sink &+= UInt64(s1r)
 
         let s2r = stage2Run(41000)
         let t2 = CACurrentMediaTime()
         let s2us = Int((t2 - t1) * 1_000_000)
-        sink &+= UInt64(s2r)
 
         let s3r = stage3Run(31400)
         let t3 = CACurrentMediaTime()
         let s3us = Int((t3 - t2) * 1_000_000)
-        sink &+= s3r
 
         let s4r = stage4Run(5900)
         let t4 = CACurrentMediaTime()
         let s4us = Int((t4 - t3) * 1_000_000)
-        sink &+= UInt64(s4r)
 
         let totalUs = Int((t4 - t0) * 1_000_000)
 
@@ -83,8 +75,6 @@ func runBenchmark() -> String {
             "total_us": totalUs
         ])
     }
-
-    resultSink = sink
 
     var sysinfo = utsname()
     uname(&sysinfo)
@@ -104,7 +94,6 @@ func runBenchmark() -> String {
         "systemVersion": device.systemVersion,
         "mem_bytes": mem,
         "cpu_count": cpuCount,
-        "sink": sink,
         "benchmarks": results
     ]
 
