@@ -1,14 +1,6 @@
 import SwiftUI
 import UIKit
 
-// Akamai BMP SDK -112 benchmark replica
-// Prevent compiler from optimizing away loops
-
-@inline(never)
-func blackhole<T>(_ x: T) {
-    withExtendedLifetime(x) {}
-}
-
 let STAGE1_K: UInt32 = 0x44CC29
 
 @inline(never)
@@ -19,7 +11,6 @@ func stage1Count(_ iters: Int) -> Int {
             c += 1
         }
     }
-    blackhole(c)
     return c
 }
 
@@ -29,7 +20,6 @@ func stage2Run(_ iters: Int) -> Int {
     for i in 1...iters {
         acc = (acc &+ (i * 7)) & 0x7FFFFFFF
     }
-    blackhole(acc)
     return acc
 }
 
@@ -39,7 +29,6 @@ func stage3Run(_ iters: Int) -> UInt64 {
     for i in 1...iters {
         acc = (acc &* UInt64(i | 1)) & 0xFFFFFFFF
     }
-    blackhole(acc)
     return acc
 }
 
@@ -49,51 +38,53 @@ func stage4Run(_ iters: Int) -> Int {
     for i in 1...iters {
         acc = (acc &+ (1000000 / max(i, 1))) & 0x7FFFFFFF
     }
-    blackhole(acc)
     return acc
 }
 
+// Global sink - compiler can't eliminate writes to a public global
+var resultSink: UInt64 = 0
+
 @inline(never)
-func runAdaptiveBenchmark() -> String {
+func runBenchmark() -> String {
     var results: [[String: Any]] = []
+    var sink: UInt64 = 0
 
-    for round in 1...3 {
-        let scale = Double(round)
-
+    for round in 1...4 {
         let t0 = CACurrentMediaTime()
 
-        let s1n = Int(29000.0 * scale)
-        let s1r = stage1Count(s1n)
+        let s1r = stage1Count(29000)
         let t1 = CACurrentMediaTime()
         let s1us = Int((t1 - t0) * 1_000_000)
+        sink &+= UInt64(s1r)
 
-        let s2n = Int(41000.0 * scale)
-        let _ = stage2Run(s2n)
+        let s2r = stage2Run(41000)
         let t2 = CACurrentMediaTime()
         let s2us = Int((t2 - t1) * 1_000_000)
+        sink &+= UInt64(s2r)
 
-        let s3n = Int(31400.0 * scale)
-        let _ = stage3Run(s3n)
+        let s3r = stage3Run(31400)
         let t3 = CACurrentMediaTime()
         let s3us = Int((t3 - t2) * 1_000_000)
+        sink &+= s3r
 
-        let s4n = Int(5900.0 * scale)
-        let _ = stage4Run(s4n)
+        let s4r = stage4Run(5900)
         let t4 = CACurrentMediaTime()
         let s4us = Int((t4 - t3) * 1_000_000)
+        sink &+= UInt64(s4r)
 
         let totalUs = Int((t4 - t0) * 1_000_000)
 
         results.append([
             "round": round,
-            "scale": scale,
-            "s1": ["n": s1n, "result": s1r, "us": s1us],
-            "s2": ["n": s2n, "us": s2us],
-            "s3": ["n": s3n, "us": s3us],
-            "s4": ["n": s4n, "us": s4us],
+            "s1": ["result": s1r, "us": s1us],
+            "s2": ["result": s2r, "us": s2us],
+            "s3": ["result": Int(s3r), "us": s3us],
+            "s4": ["result": s4r, "us": s4us],
             "total_us": totalUs
         ])
     }
+
+    resultSink = sink
 
     var sysinfo = utsname()
     uname(&sysinfo)
@@ -105,8 +96,7 @@ func runAdaptiveBenchmark() -> String {
 
     let device = UIDevice.current
     let mem = ProcessInfo.processInfo.physicalMemory
-    let cpuCount = ProcessInfo.processInfo.processorCount
-    let activeCount = ProcessInfo.processInfo.activeProcessorCount
+    let cpuCount = ProcessInfo.processInfo.activeProcessorCount
 
     let info: [String: Any] = [
         "machine": machine,
@@ -114,7 +104,7 @@ func runAdaptiveBenchmark() -> String {
         "systemVersion": device.systemVersion,
         "mem_bytes": mem,
         "cpu_count": cpuCount,
-        "active_cpu": activeCount,
+        "sink": sink,
         "benchmarks": results
     ]
 
@@ -127,7 +117,6 @@ func runAdaptiveBenchmark() -> String {
 
 struct ContentView: View {
     @State private var resultText = "Running benchmark..."
-    @State private var done = false
 
     var body: some View {
         ScrollView {
@@ -138,10 +127,9 @@ struct ContentView: View {
         }
         .onAppear {
             DispatchQueue.global(qos: .userInitiated).async {
-                let r = runAdaptiveBenchmark()
+                let r = runBenchmark()
                 DispatchQueue.main.async {
                     resultText = r
-                    done = true
                 }
             }
         }
