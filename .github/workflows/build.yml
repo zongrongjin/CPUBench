@@ -30,7 +30,7 @@ jobs:
       - name: Package .ipa
         run: |
           mkdir -p Payload
-          cp -r build/Build/Products/Debug-iphoneos/CPUBench.app Payload/
+          cp -r build/Build/Products/Release-iphoneos/CPUBench.app Payload/
           zip -r CPUBench.ipa Payload
 
       - name: Upload to BrowserStack
